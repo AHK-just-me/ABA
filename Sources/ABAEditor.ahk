@@ -84,7 +84,7 @@ Return
 FileNewABA:
 Gui, Main:Default
 Gui, +OwnDialogs
-If !(ABAObj := ABAED_Create("")) {
+If !(ABAObj := New ABAED("")) {
    MsgBox, 16, Error!, Could not create a newABA object!`nError: %ErrorLevel%
    Return
 }
@@ -99,7 +99,7 @@ Gui, +OwnDialogs
 FileSelectFile, ABAFile, 3, %A_ScriptDir%, Select an ABA file, ABA files (*.bin)
 If (ErrorLevel)
    Return
-If !(ABAObj := ABAED_Create(ABAFile)) {
+If !(ABAObj := New ABAED(ABAFile)) {
    MsgBox, 16, Error!, %ABAFile% is not a valid ABA file!`nError: %ErrorLevel%
    Return
 }
@@ -127,7 +127,7 @@ Gui, +OwnDialogs
 FileSelectFile, BRAFile, 3, %A_ScriptDir%, Select a BRA file, BRA files (*.bra)
 If (ErrorLevel)
    Return
-If !(ABAObj := ABAED_Create(BRAFile)) {
+If !(ABAObj := New ABAED(BRAFile)) {
    MsgBox, 16, Error!, %BRAFile% is not a valid BRA file!`nError: %ErrorLevel%
    Return
 }
@@ -141,12 +141,12 @@ Return
 EditAddstring:
 Gui, Main:Default
 Gui, +OwnDialogs
-EntryName := EntryStr := "", Encode := False
+EntryName := EntryStr := ""
 Gosub, AddStrGui
 If (EntryName <> "") && (EntryStr <> "") {
    Gui, Main:Default
    Gui, +OwnDialogs
-   If !(Index := ABAObj.AddString(EntryName, EntryStr, Encode)) {
+   If !(Index := ABAObj.AddString(EntryName, EntryStr)) {
       MsgBox, 16, Error!, Could not add string entry %EntryName%`n`nError: %ErrorLevel%!
       Return
    }
@@ -227,12 +227,11 @@ If (EntryType <> 2) {
    Return
 }
 NewEntryStr := ""
-Encoded := ABAObj.Entries[EntryIndex, "Enc"]
 Gosub, ReplStrGui
 If (NewEntryStr <> "") {
    Gui, Main:Default
    Gui, +OwnDialogs
-   If !ABAObj.ReplaceString(EntryIndex, NewEntryStr, Encode) {
+   If !ABAObj.ReplaceString(EntryIndex, NewEntryStr) {
       MsgBox, 16, Error!, Could not replace the string for %EntryName%!`nError: %ErrorLevel%
       Return
    }
@@ -348,7 +347,6 @@ Gui, Add, Edit, x+m yp w%W% vEntryName
 GuiControlGet, E, Pos, EntryName
 GuiControl, Move, T, h%EH%
 Gui, Add, Edit, xm w600 r10 vEntryStr
-Gui, Add, CheckBox, xm vEncode, Encode
 Gui, Add, Button, xm w200 gAddStrGuiOK, OK
 Gui, Add, Button, x410 yp wp gAddStrGuiCancel Default, Cancel
 Gui, Show, , Add String
@@ -374,7 +372,7 @@ Gosub, AddStrGuiClose
 Return
 ; ----------------------------------------------------------------------------------------------------------------------------------
 AddStrGuiCancel:
-EntryName := EntryStr := "", Encode := False
+EntryName := EntryStr := ""
 ; ----------------------------------------------------------------------------------------------------------------------------------
 AddStrGuiClose:
 Gui, Main:-Disabled
@@ -394,7 +392,6 @@ GuiControl, , %HED%, %EntryStr%
 Gui, Add, Text, xm , New string:
 Gui, Add, Edit, xm y+5 w600 r10 vNewEntryStr +hwndHED
 GuiControl, , %HED%, %EntryStr%
-Gui, Add, Checkbox, vEncode Checked%Encoded%, Encode
 Gui, Add, Button, xm w200 gReplStrGuiOK, OK
 Gui, Add, Button, x410 yp wp gReplStrGuiCancel Default, Cancel
 Gui, Show, , Replace String - %EntryName%

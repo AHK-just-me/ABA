@@ -17,10 +17,9 @@
 ;  -  Data entries (offset: ABAED.HeaderSize, one entry per file, size per entry: ABAED.EntrySize):
 ;     Offset      Type        Contents
 ;     0           UInt        offset of the entry name within the string area
-;     4           UShort      type of the entry
-;     6           UShort      reserved
-;     4           UInt        offset of the entry data within the data area
-;     8           UInt        size of the data stored in the data area
+;     4           UInt        type of the entry
+;     8           UInt        offset of the entry data within the data area
+;     12          UInt        size of the data stored in the data area
 ;  -  Data area (offset and size: defined in the header):
 ;     Raw data.
 ;  -  String area (offset and size: defined in the header):
@@ -57,9 +56,6 @@
 ;     ReplaceString()   replaces the string of the specified string entry within the ABAED object.
 ;     Save()            stores the current contents of the ABAED object on disc.
 ;     UseGDIP()         loads and initializes the Gdiplus.dll.
-; ----------------------------------------------------------------------------------------------------------------------------------
-; Functions:
-;  ABAED_Create()       standard lib compatible wrapper for New ABAED.
 ; ==================================================================================================================================
 Class ABAED {
    ; Instance variables ============================================================================================================
@@ -159,8 +155,8 @@ Class ABAED {
          Return !(ErrorLevel := 1)
       If (UseGDIP)
          This.UseGDIP()
-      If (FileName <> "") {
-         SplitPath, FileName, , Dir, Ext, NameNoExt
+      SplitPath, FileName, , Dir, Ext, NameNoExt
+      If FileExist(FileName) {
          If (Ext = "BRA") {
             If !This.CreateFromBRA(FileName)
                Return False
@@ -201,7 +197,7 @@ Class ABAED {
             Loop, % EntryCount {
                If (EntryAddr < TOCMax) && ((StrPtr := NumGet(EntryAddr + 0, "UInt")) < StrSize) {
                   Name := StrGet(StringAddr + StrPtr, "UTF-8")
-                  Type := NumGet(EntryAddr + 4, "UShort")
+                  Type := NumGet(EntryAddr + 4, "UInt")
                   Offset:= NumGet(EntryAddr + 8, "UInt")
                   Size := NumGet(EntryAddr +12, "UInt")
                   Entry := {}
@@ -232,8 +228,17 @@ Class ABAED {
             VarSetCapacity(Buffer, 0)
          }
       }
-      Else
-         This.FilePath := "NewABA.bin"
+      Else {
+         If (FileName = "")
+            This.FilePath := "NewABA.bin"
+         Else {
+            MsgBox, 36, %A_ThisFunc%, The file %FileName% does nor exist.`nDo you want to create a new empty ABA object?
+            IfMsgBox, Yes
+               This.FilePath := FileName
+            Else
+               Return 0
+         }
+      }
    }
    ; ===============================================================================================================================
    ; Adds the specified data entry to the ABAED object.
@@ -310,7 +315,7 @@ Class ABAED {
    ;                 2  :  the specified entry name already exists.
    ;                 3  :  invalid string.
    ; ===============================================================================================================================
-   AddString(EntryName, ByRef EntryStr, Encode := False) {
+   AddString(EntryName, ByRef EntryStr) {
       If !IsObject(This.Base)
          Return ""
       EntryName := Trim(EntryName)
@@ -320,18 +325,14 @@ Class ABAED {
          Return !(ErrorLevel := 2)
       If !StrLen(EntryStr)
          Return !(ErrorLevel := 3)
-      EntrySize := Encode ? This.EncStr(EntryStr, Enc) : StrPut(EntryStr, "UTF-8")
+      EntrySize := StrPut(EntryStr, "UTF-8")
       Entry := {}
       Entry.Name := EntryName
       Entry.Type := 2
-      Entry.Enc  := !!Encode
       Entry.Size := EntrySize
       Entry.SetCapacity("Data", EntrySize)
       Entry.Addr := Entry.GetAddress("Data")
-      If (Encode)
-         DllCall("RtlMoveMemory", "Ptr", Entry.Addr, "Ptr", &Enc, "Ptr", EntrySize)
-      Else
-         StrPut(EntryStr, Entry.Addr + 0, "UTF-8")
+      StrPut(EntryStr, Entry.Addr + 0, "UTF-8")
       Index := This.Entries.Push(Entry)
       This.Names[FileName] := Index
       This.DataSize += EntrySize
@@ -469,7 +470,7 @@ Class ABAED {
       If (Entry.Type <> 2)
          Return !(ErrorLevel := 2)
       ErrorLevel := 0
-      Return (Entry.Enc ? This.DecStr(Entry.Addr) : StrGet(Entry.Addr + 0, Entry.Size, "UTF-8"))
+      Return StrGet(Entry.Addr + 0, Entry.Size, "UTF-8")
    }
    ; ===============================================================================================================================
    ; Replaces the data of the specified data entry with the data passed in DataBuffer.
@@ -546,7 +547,7 @@ Class ABAED {
    ;     2  :  the specified data entry is not a string entry.
    ;     3  :  invalid Newstr parameter.
    ; ===============================================================================================================================
-   ReplaceString(NameOrIndex, NewStr, Encode := False) {
+   ReplaceString(NameOrIndex, NewStr) {
       Index := This.Names.HasKey(NameOrIndex) ? This.Names[NameOrIndex] : NameOrIndex
       If !(Entry := This.Entries[Index])
          Return !(ErrorLevel := 1)
@@ -554,16 +555,12 @@ Class ABAED {
          Return !(ErrorLevel := 2)
       If !StrLen(NewStr)
          Return !(ErrorLevel := 3)
-      EntrySize := Encode ? This.EncStr(NewStr, Enc) : StrPut(NewStr, "UTF-8")
+      EntrySize := StrPut(NewStr, "UTF-8")
       OldSize := Entry.Size
-      Entry.Enc := !!Encode
       Entry.Size := EntrySize
       Entry.SetCapacity("Data", EntrySize)
       Entry.Addr := Entry.GetAddress("Data")
-      If (Encode)
-         DllCall("RtlMoveMemory", "Ptr", Entry.Addr, "Ptr", &Enc, "Ptr", EntrySize)
-      Else
-         StrPut(NewStr, Entry.Addr + 0, "UTF-8")
+      StrPut(NewStr, Entry.Addr + 0, "UTF-8")
       This.DataSize += EntrySize - OldSize
       Return !(ErrorLevel := 0)
    }
@@ -595,8 +592,7 @@ Class ABAED {
       For Index, Entry In This.Entries {
          TOCAddr := NumPut(StrOffset, TOCAddr + 0, "UInt")
          StrOffset += StrPut(Entry.Name, &StrBuffer + StrOffset, "UTF-8")
-         TOCAddr := NumPut(Entry.Type, TOCAddr + 0, "UShort")
-         TOCAddr := NumPut(Entry.Type = 2 ? Entry.Enc : 0, TOCAddr + 0, "UShort")
+         TOCAddr := NumPut(Entry.Type, TOCAddr + 0, "UInt")
          TOCAddr := NumPut(DataOffset, TOCAddr + 0, "UInt")
          TOCAddr := NumPut(Entry.Size, TOCAddr + 0, "UInt")
          DllCall("RtlMoveMemory", "Ptr", &DataBuffer + DataOffset, "Ptr", Entry.Addr, "Ptr", Entry.Size)
@@ -693,23 +689,6 @@ Class ABAED {
    ; ===============================================================================================================================
    ; Private methods
    ; ===============================================================================================================================
-   DecStr(Ptr) {
-      C := NumGet(Ptr + 0, "Int64"), H := NumGet(Ptr + 8, "Int64"), VarSetCapacity(D, C * 8, 0), O := 16, A := &D
-      Loop, % C
-         A := NumPut(NumGet(Ptr + O, "Int64") ^ H, A + 0, "Int64"), O += 8
-      Return StrGet(&D, "UTF-8")
-   }
-   ; -------------------------------------------------------------------------------------------------------------------------------
-   EncStr(ByRef Str, ByRef Enc) {
-      L := StrPut(Str, "UTF-8") + 7, C := L // 8, S := (C + 2) * 8
-      VarSetCapacity(U, C * 8, 0), StrPut(Str, &U, "UTF-8")
-      DllCall("Shlwapi.dll\HashData", "Ptr", &U, "UInt", C * 8, "Int64P", H, "UInt", 8)
-      VarSetCapacity(Enc, S, 0), A := &Enc, A := NumPut(C, A + 0, "Int64"), A := NumPut(H, A + 0, "Int64"), I := 0
-      Loop, %C%
-         A := NumPut(NumGet(U, I, "Int64") ^ H, A + 0, "Int64"), I += 8
-      Return S
-   }
-   ; -------------------------------------------------------------------------------------------------------------------------------
    UseGDIP(Params*) { ; loads and initializes the Gdiplus.dll
       Static GdipObject := {}, GdipModule := "", GdipToken  := ""
       If (GdipModule = "") {
@@ -727,11 +706,4 @@ Class ABAED {
          DllCall("FreeLibrary", "Ptr", GdipModule)
       }
    }
-}
-; ==================================================================================================================================
-; Creates a new ABAED object (standard lib compatible wrapper for New ABAED).
-; For details see ABAED.__New().
-; ==================================================================================================================================
-ABAED_Create(FileName, UseGDIP := False) { ;
-   Return New ABAED(FileName, UseGDIP)
 }
